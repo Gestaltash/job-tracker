@@ -209,6 +209,10 @@
       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 102.13-9.36L1 10"/></svg>
       Load new file
     </button>
+    <button onclick="exportPDF()" style="display:flex;align-items:center;gap:6px;padding:7px 14px;background:#10b981;color:white;border:none;border-radius:8px;cursor:pointer;font-size:13px;font-weight:500;">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+      Export PDF
+    </button>
   </div>
 
   <div class="main">
@@ -751,6 +755,34 @@ function renderTable() {
       <td><span class="pill ${cls}">${status}</span></td>
     </tr>`;
   }).join('');
+}
+
+function exportPDF() {
+  // Add print-specific styles temporarily
+  const style = document.createElement('style');
+  style.id = 'print-style';
+  style.innerHTML = `
+    @media print {
+      body { background: white !important; }
+      .header { position: static !important; }
+      .main { padding-top: 20px !important; }
+      #key-banner, .load-btn, button { display: none !important; }
+      .card { break-inside: avoid; }
+      .insight { break-inside: avoid; }
+      canvas { max-width: 100% !important; }
+    }
+  `;
+  document.head.appendChild(style);
+  
+  // Set a descriptive title for the PDF filename
+  const origTitle = document.title;
+  document.title = 'Job Search Dashboard - ' + new Date().toLocaleDateString();
+  
+  window.print();
+  
+  // Cleanup
+  document.title = origTitle;
+  document.getElementById('print-style')?.remove();
 }
 </script>
 </body>
