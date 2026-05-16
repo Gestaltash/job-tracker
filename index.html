@@ -645,7 +645,7 @@ Remember: every insight must cite specific numbers from this data. Reference act
         body: JSON.stringify({
           system_instruction: { parts: [{ text: systemPrompt }] },
           contents: [{ parts: [{ text: userPrompt }] }],
-          generationConfig: { temperature: 0.4, maxOutputTokens: 1000 }
+          generationConfig: { temperature: 0.4, maxOutputTokens: 2000 }
         })
       }
     );
