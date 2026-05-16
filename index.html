@@ -626,11 +626,10 @@ Return ONLY a valid JSON array. No markdown, no preamble, no explanation. Format
   ...
 ]`;
 
-  const userPrompt = `Here is my current job application data. Generate strategic insights based ONLY on these real numbers:
-
-${JSON.stringify(statsPayload, null, 2)}
-
-Remember: every insight must cite specific numbers from this data. Reference actual country names, role categories, and counts. Do not give generic advice that ignores the data.`;
+  const s = statsPayload;
+  const topCountries = s.countryBreakdown.slice(0,5).map(c=>c.name+': '+c.total+' apps, '+c.rejRate+'% rejected, '+c.interviews+' interviews').join('; ');
+  const topRoles = s.roleBreakdown.slice(0,5).map(r=>r.name+': '+r.total+' apps, '+r.rejRate+'% rejected').join('; ');
+  const userPrompt = 'Stats: Total='+s.total+', Rejected='+s.rejected+' ('+s.rejRate+'%), Active='+s.active+', Interviews='+s.interviews+', Stale='+s.oldApps+', Remote='+s.remoteCount+'. Countries: '+topCountries+'. Roles: '+topRoles+'. Generate exactly 4 insights as a JSON array.';
 
   try {
     const apiKey = window.AI_API_KEY;
