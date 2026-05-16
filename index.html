@@ -653,9 +653,16 @@ Remember: every insight must cite specific numbers from this data. Reference act
     const apiData = await response.json();
     if (!response.ok) throw new Error(apiData.error?.message || 'Groq API error');
     const rawText = (apiData.candidates?.[0]?.content?.parts?.[0]?.text || '').trim();
-    const match = rawText.match(/\[\s*\{[\s\S]*\}\s*\]/);
-    if (!match) throw new Error('No JSON array found in response: ' + rawText.slice(0, 200));
-    const insights = JSON.parse(match[0]);
+    // Try to extract JSON array from anywhere in the response
+    let insights;
+    const match = rawText.match(/\[\s*\{[\s\S]*?\}\s*(?:,\s*\{[\s\S]*?\}\s*)*\]/);
+    if (match) {
+      insights = JSON.parse(match[0]);
+    } else {
+      // Try parsing the whole thing
+      const clean = rawText.replace(/```json|```/g, '').trim();
+      insights = JSON.parse(clean);
+    }
 
     el.innerHTML = insights.map(i=>`
       <div class="insight ${i.type}">
