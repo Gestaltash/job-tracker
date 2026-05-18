@@ -333,7 +333,7 @@ document.getElementById('file-input').addEventListener('change', e => { if (e.ta
 function processFile(file) {
   const reader = new FileReader();
   reader.onload = e => {
-    const wb = XLSX.read(e.target.result, { type: 'array' });
+    const wb = XLSX.read(e.target.result, { type: 'array', cellDates: true });
     const sheet = wb.Sheets[wb.SheetNames[0]];
     const raw = XLSX.utils.sheet_to_json(sheet, { defval: '' });
     allData = raw.filter(r => r['Company'] && r['Company'] !== '#VALUE!' && String(r['Company']).trim() !== '');
@@ -346,6 +346,24 @@ function processFile(file) {
 }
 
 function v(row, key) { return String(row[key] || '').trim(); }
+
+function daysAgo(row) {
+  const raw = row['Date Applied'];
+  if (!raw) return NaN;
+  let date;
+  if (raw instanceof Date) {
+    date = raw;
+  } else if (typeof raw === 'number') {
+    // Excel serial: days since Dec 30 1899
+    date = new Date(Date.UTC(1899, 11, 30) + raw * 86400000);
+  } else {
+    date = new Date(raw);
+  }
+  if (isNaN(date.getTime())) return NaN;
+  const today = new Date(); today.setHours(0,0,0,0);
+  const d = new Date(date); d.setHours(0,0,0,0);
+  return Math.floor((today - d) / 86400000);
+}
 
 async function buildDashboard() {
   window._lastData = true;
@@ -460,11 +478,8 @@ function buildRoleRejectionBars(data) {
 function buildVelocityChart(data) {
   const dayMap = {};
   data.forEach(r => {
-    const d = v(r,'Days Since Applied');
-    if (d !== '') {
-      const key = parseInt(d);
-      if (!isNaN(key)) dayMap[key] = (dayMap[key]||0)+1;
-    }
+    const key = daysAgo(r);
+    if (!isNaN(key) && key >= 0) dayMap[key] = (dayMap[key]||0)+1;
   });
   const days = Object.keys(dayMap).map(Number).sort((a,b)=>b-a);
   const labels = days.map(d => d === 0 ? 'Today' : `${d}d ago`);
@@ -548,14 +563,14 @@ function computeInsightData(data, total, rejected, rejRate, active, interviews) 
   // Application velocity (last 14 days vs prior)
   const dayMap = {};
   data.forEach(r => {
-    const d = parseInt(v(r,'Days Since Applied'));
-    if (!isNaN(d)) dayMap[d] = (dayMap[d]||0)+1;
+    const d = daysAgo(r);
+    if (!isNaN(d) && d >= 0) dayMap[d] = (dayMap[d]||0)+1;
   });
   const last7 = Object.entries(dayMap).filter(([d])=>parseInt(d)<=7).reduce((s,[,n])=>s+n,0);
   const prev7 = Object.entries(dayMap).filter(([d])=>parseInt(d)>7&&parseInt(d)<=14).reduce((s,[,n])=>s+n,0);
 
   // Old apps with no response
-  const oldApps = data.filter(r=>parseInt(v(r,'Days Since Applied'))>=7 && v(r,'Status')==='Applied').length;
+  const oldApps = data.filter(r=>daysAgo(r)>=7 && v(r,'Status')==='Applied').length;
 
   // Companies (detect patterns)
   const companies = [...new Set(data.map(r=>v(r,'Company')).filter(Boolean))];
@@ -743,7 +758,7 @@ function renderTable() {
   tbody.innerHTML = filtered.map((r,i) => {
     const status = v(r,'Status') || 'Unknown';
     const cls = statusClass[status] || '';
-    const days = v(r,'Days Since Applied');
+    const days = daysAgo(r);
     return `<tr>
       <td style="color:var(--text3);font-weight:400;">${i+1}</td>
       <td>${v(r,'Company') || '—'}</td>
@@ -751,7 +766,7 @@ function renderTable() {
       <td><span style="font-size:11px;color:var(--text3);">${v(r,'Role Category') || '—'}</span></td>
       <td>${v(r,'Country') || '—'}</td>
       <td>${v(r,'Work Type') || '—'}</td>
-      <td style="color:var(--text3);">${days !== '' ? days+'d' : '—'}</td>
+      <td style="color:var(--text3);">${!isNaN(days) && days >= 0 ? days+'d' : '—'}</td>
       <td><span class="pill ${cls}">${status}</span></td>
     </tr>`;
   }).join('');
