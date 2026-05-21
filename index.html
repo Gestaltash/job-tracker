@@ -371,9 +371,11 @@ async function buildDashboard() {
   const total = data.length;
   const byStatus = {};
   data.forEach(r => { const s = v(r,'Status') || 'Unknown'; byStatus[s] = (byStatus[s]||0)+1; });
-  const INTERVIEW_STATUSES = ['Called','For Interview 1','For Interview 2','For Interview 3','For Final Interview'];
+  const PHONE_SCREEN_STATUSES = ['Called','Phone Screen'];
+  const INTERVIEW_STATUSES = ['For Interview 1','For Interview 2','For Interview 3','For Final Interview'];
   const active = data.filter(r => v(r,'Status') === 'Applied').length;
   const rejected = byStatus['Rejected'] || 0;
+  const phoneScreens = PHONE_SCREEN_STATUSES.reduce((sum, s) => sum + (byStatus[s]||0), 0);
   const interviews = INTERVIEW_STATUSES.reduce((sum, s) => sum + (byStatus[s]||0), 0);
   const accepted = byStatus['Accepted'] || 0;
   const rejRate = total > 0 ? Math.round((rejected/total)*100) : 0;
@@ -382,7 +384,7 @@ async function buildDashboard() {
     <div class="metric"><div class="metric-label">Total applied</div><div class="metric-value">${total}</div><div class="metric-sub">All applications</div></div>
     <div class="metric blue"><div class="metric-label">Still active</div><div class="metric-value">${active}</div><div class="metric-sub">Awaiting response</div></div>
     <div class="metric red"><div class="metric-label">Rejected</div><div class="metric-value">${rejected}</div><div class="metric-sub">${rejRate}% rejection rate</div></div>
-    <div class="metric amber"><div class="metric-label">Interviews</div><div class="metric-value">${interviews}</div><div class="metric-sub">In pipeline</div></div>
+    <div class="metric amber"><div class="metric-label">Phone Screens</div><div class="metric-value">${phoneScreens}</div><div class="metric-sub">${interviews} interview(s) in pipeline</div></div>
     <div class="metric green"><div class="metric-label">Offers</div><div class="metric-value">${accepted}</div><div class="metric-sub">Accepted</div></div>
   `;
 
@@ -392,7 +394,7 @@ async function buildDashboard() {
   buildVelocityChart(data);
   buildRoleRejectionBars(data);
   buildStatusChart(data, byStatus);
-  await buildInsights(data, total, rejected, rejRate, active, interviews);
+  await buildInsights(data, total, rejected, rejRate, active, phoneScreens, interviews);
   populateFilters(data);
   renderTable();
 }
@@ -503,10 +505,10 @@ function buildVelocityChart(data) {
 }
 
 function buildStatusChart(data, byStatus) {
-  const statusColorMap = { 'Applied':'#378ADD','Called':'#7F77DD','For Interview 1':'#639922','For Interview 2':'#3B6D11','For Interview 3':'#085041','For Final Interview':'#04342C','Accepted':'#1D9E75','Withdrawn':'#BA7517','Rejected':'#E24B4A' };
+  const statusColorMap = { 'Applied':'#378ADD','Called':'#7F77DD','Phone Screen':'#9B59B6','Under Review':'#16A085','For Interview 1':'#639922','For Interview 2':'#3B6D11','For Interview 3':'#085041','For Final Interview':'#04342C','Accepted':'#1D9E75','Withdrawn':'#BA7517','Rejected':'#E24B4A','Not Applied':'#BDC3C7' };
   const allStatuses = Object.keys(byStatus).filter(s => byStatus[s] > 0);
   // Sort: Applied first, Rejected last, rest in between
-  const order = ['Applied','Called','For Interview 1','For Interview 2','For Interview 3','For Final Interview','Accepted','Withdrawn','Rejected'];
+  const order = ['Applied','Called','Phone Screen','Under Review','For Interview 1','For Interview 2','For Interview 3','For Final Interview','Accepted','Withdrawn','Rejected','Not Applied'];
   const sorted = [...allStatuses].sort((a,b) => {
     const ai = order.indexOf(a); const bi = order.indexOf(b);
     return (ai === -1 ? 99 : ai) - (bi === -1 ? 99 : bi);
@@ -527,7 +529,7 @@ function buildStatusChart(data, byStatus) {
   });
 }
 
-function computeInsightData(data, total, rejected, rejRate, active, interviews) {
+function computeInsightData(data, total, rejected, rejRate, active, phoneScreens, interviews) {
   // Country breakdown
   const countryRej = {};
   data.forEach(r => {
@@ -535,7 +537,7 @@ function computeInsightData(data, total, rejected, rejRate, active, interviews) 
     if (!countryRej[c]) countryRej[c] = { total:0, rejected:0, interviews:0, accepted:0 };
     countryRej[c].total++;
     if (v(r,'Status')==='Rejected') countryRej[c].rejected++;
-    if (['Called','For Interview 1','For Interview 2','For Interview 3','For Final Interview'].includes(v(r,'Status'))) countryRej[c].interviews++;
+    if (['Called','Phone Screen','For Interview 1','For Interview 2','For Interview 3','For Final Interview'].includes(v(r,'Status'))) countryRej[c].interviews++;
     if (v(r,'Status')==='Accepted') countryRej[c].accepted++;
   });
 
@@ -546,7 +548,7 @@ function computeInsightData(data, total, rejected, rejRate, active, interviews) 
     if (!roleRej[c]) roleRej[c] = { total:0, rejected:0, interviews:0, accepted:0 };
     roleRej[c].total++;
     if (v(r,'Status')==='Rejected') roleRej[c].rejected++;
-    if (['Called','For Interview 1','For Interview 2','For Interview 3','For Final Interview'].includes(v(r,'Status'))) roleRej[c].interviews++;
+    if (['Called','Phone Screen','For Interview 1','For Interview 2','For Interview 3','For Final Interview'].includes(v(r,'Status'))) roleRej[c].interviews++;
     if (v(r,'Status')==='Accepted') roleRej[c].accepted++;
   });
 
@@ -557,7 +559,7 @@ function computeInsightData(data, total, rejected, rejRate, active, interviews) 
     if (!workTypeCount[wt]) workTypeCount[wt] = { total:0, rejected:0, interviews:0 };
     workTypeCount[wt].total++;
     if (v(r,'Status')==='Rejected') workTypeCount[wt].rejected++;
-    if (['Called','For Interview 1','For Interview 2','For Interview 3','For Final Interview'].includes(v(r,'Status'))) workTypeCount[wt].interviews++;
+    if (['Called','Phone Screen','For Interview 1','For Interview 2','For Interview 3','For Final Interview'].includes(v(r,'Status'))) workTypeCount[wt].interviews++;
   });
 
   // Application velocity (last 14 days vs prior)
@@ -582,10 +584,12 @@ function computeInsightData(data, total, rejected, rejRate, active, interviews) 
   data.forEach(r => { const s = v(r,'Status')||'Unknown'; byStatus[s]=(byStatus[s]||0)+1; });
   const withdrawn = byStatus['Withdrawn'] || 0;
   const called = byStatus['Called'] || 0;
+  const phoneScreen = byStatus['Phone Screen'] || 0;
+  const underReview = byStatus['Under Review'] || 0;
   const accepted = byStatus['Accepted'] || 0;
 
   return {
-    total, rejected, rejRate, active, interviews, accepted, withdrawn, called,
+    total, rejected, rejRate, active, phoneScreens, interviews, accepted, withdrawn, called, phoneScreen, underReview,
     remoteCount, oldApps, last7, prev7,
     consultingFirms,
     countryBreakdown: Object.entries(countryRej).sort((a,b)=>b[1].total-a[1].total).map(([name, d])=>({
@@ -614,7 +618,7 @@ function computeInsightData(data, total, rejected, rejRate, active, interviews) 
   };
 }
 
-async function buildInsights(data, total, rejected, rejRate, active, interviews) {
+async function buildInsights(data, total, rejected, rejRate, active, phoneScreens, interviews) {
   const el = document.getElementById('insights-section');
 
   // Show loading state
@@ -627,7 +631,7 @@ async function buildInsights(data, total, rejected, rejRate, active, interviews)
       </div>
     </div>`;
 
-  const statsPayload = computeInsightData(data, total, rejected, rejRate, active, interviews);
+  const statsPayload = computeInsightData(data, total, rejected, rejRate, active, phoneScreens, interviews);
 
   const systemPrompt = `You are a strategic job search advisor with deep knowledge of the 2024–2025 global job market, including remote work trends, ATS systems, hiring cycles, recruiter behavior, international hiring barriers, and role-specific competition. You are analyzing a job seeker's real application data.
 
@@ -646,9 +650,9 @@ Return ONLY a valid JSON array. No markdown, no preamble, no explanation. Format
 ]`;
 
   const s = statsPayload;
-  const topCountries = s.countryBreakdown.slice(0,5).map(c=>c.name+': '+c.total+' apps, '+c.rejRate+'% rejected, '+c.interviews+' interviews').join('; ');
+  const topCountries = s.countryBreakdown.slice(0,5).map(c=>c.name+': '+c.total+' apps, '+c.rejRate+'% rejected, '+c.interviews+' phone screens/interviews').join('; ');
   const topRoles = s.roleBreakdown.slice(0,5).map(r=>r.name+': '+r.total+' apps, '+r.rejRate+'% rejected').join('; ');
-  const userPrompt = 'Stats: Total='+s.total+', Rejected='+s.rejected+' ('+s.rejRate+'%), Active='+s.active+', Interviews='+s.interviews+', Stale='+s.oldApps+', Remote='+s.remoteCount+'. Countries: '+topCountries+'. Roles: '+topRoles+'. Generate exactly 4 insights as a JSON array.';
+  const userPrompt = 'Stats: Total='+s.total+', Rejected='+s.rejected+' ('+s.rejRate+'%), Active='+s.active+', PhoneScreens='+s.phoneScreens+' (of which '+s.phoneScreen+' advanced to recruiter/HM screen), Interviews='+s.interviews+' (formal HM interviews, currently 0), UnderReview='+s.underReview+', Stale='+s.oldApps+', Remote='+s.remoteCount+'. IMPORTANT: PhoneScreens are initial/recruiter calls only — there are NO formal interviews yet. Countries: '+topCountries+'. Roles: '+topRoles+'. Generate exactly 4 insights as a JSON array.';
 
   try {
     const apiKey = window.AI_API_KEY;
@@ -698,13 +702,15 @@ Return ONLY a valid JSON array. No markdown, no preamble, no explanation. Format
 
 function buildFallbackInsights(s) {
   const items = [];
-  const interviewRate = s.total > 0 ? Math.round((s.interviews / s.total) * 100) : 0;
+  const phoneScreenRate = s.total > 0 ? Math.round((s.phoneScreens / s.total) * 100) : 0;
   const bestCountry = s.countryBreakdown.filter(c=>c.total>=3).sort((a,b)=>a.rejRate-b.rejRate)[0];
   const worstCountry = s.countryBreakdown.filter(c=>c.total>=3).sort((a,b)=>b.rejRate-a.rejRate)[0];
   const bestRole = s.roleBreakdown.filter(r=>r.total>=2).sort((a,b)=>a.rejRate-b.rejRate)[0];
 
-  if (s.interviews === 0 && s.total >= 5)
-    items.push({ type:'warn', title:'0% interview conversion — materials need attention', body:`${s.total} applications sent with no interview calls (${s.rejRate}% rejection rate). This typically signals a resume/ATS mismatch or poor role-fit targeting. Prioritize tailoring your next 10 applications with role-specific keywords.` });
+  if (s.phoneScreens === 0 && s.total >= 5)
+    items.push({ type:'warn', title:'0% phone screen conversion — materials need attention', body:`${s.total} applications sent with no recruiter calls (${s.rejRate}% rejection rate). This typically signals a resume/ATS mismatch or poor role-fit targeting. Prioritize tailoring your next 10 applications with role-specific keywords.` });
+  else if (s.phoneScreens > 0 && s.interviews === 0)
+    items.push({ type:'info', title:`${s.phoneScreens} phone screen(s) — no formal interviews yet`, body:`You have ${s.phoneScreens} recruiter/phone screen(s) in progress. Focus on converting these to hiring manager interviews. No formal interviews have been scheduled yet.` });
 
   if (worstCountry && worstCountry.rejRate >= 40)
     items.push({ type:'danger', title:`${worstCountry.name}: ${worstCountry.rejRate}% rejection rate`, body:`${worstCountry.name} is your worst-performing market with ${worstCountry.rejected}/${worstCountry.total} rejections. Consider whether visa/sponsorship barriers apply here. Redirect effort unless roles explicitly offer remote or sponsorship.` });
@@ -753,7 +759,7 @@ function renderTable() {
     if (search && !v(r,'Company').toLowerCase().includes(search) && !v(r,'Job Title').toLowerCase().includes(search)) return false;
     return true;
   });
-  const statusClass = { 'Applied':'pill-applied','Rejected':'pill-rejected','Withdrawn':'pill-withdrawn','Called':'pill-called','For Interview 1':'pill-interview','For Interview 2':'pill-interview','For Interview 3':'pill-interview','For Final Interview':'pill-interview','Accepted':'pill-accepted' };
+  const statusClass = { 'Applied':'pill-applied','Rejected':'pill-rejected','Withdrawn':'pill-withdrawn','Called':'pill-called','Phone Screen':'pill-interview','Under Review':'pill-called','For Interview 1':'pill-interview','For Interview 2':'pill-interview','For Interview 3':'pill-interview','For Final Interview':'pill-interview','Accepted':'pill-accepted' };
   const tbody = document.getElementById('table-body');
   tbody.innerHTML = filtered.map((r,i) => {
     const status = v(r,'Status') || 'Unknown';
