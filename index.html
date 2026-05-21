@@ -98,12 +98,27 @@
 
   /* Status pills */
   .pill { display: inline-block; font-size: 11px; padding: 2px 8px; border-radius: 20px; font-weight: 500; }
-  .pill-applied { background: var(--blue-light); color: var(--blue); }
-  .pill-rejected { background: var(--red-light); color: var(--red); }
-  .pill-withdrawn { background: var(--amber-light); color: var(--amber); }
-  .pill-interview { background: var(--green-light); color: var(--green); }
-  .pill-called { background: var(--purple-light); color: var(--purple); }
-  .pill-accepted { background: var(--teal-light); color: var(--teal); }
+  .pill-applied     { background: var(--blue-light);   color: var(--blue); }
+  .pill-rejected    { background: var(--red-light);    color: var(--red); }
+  .pill-withdrawn   { background: var(--amber-light);  color: var(--amber); }
+  .pill-called      { background: var(--purple-light); color: var(--purple); }
+  .pill-phonescreen { background: #f0eaff;             color: #6c3fc7; }
+  .pill-underreview { background: var(--teal-light);   color: var(--teal); }
+  .pill-interview   { background: var(--green-light);  color: var(--green); }
+  .pill-offer       { background: #fff4e0;             color: #b45309; }
+  .pill-accepted    { background: var(--teal-light);   color: var(--teal); }
+
+  /* Pipeline funnel */
+  .pipeline-funnel { display: flex; align-items: stretch; gap: 0; margin-bottom: 1.5rem; }
+  .funnel-stage { flex: 1; background: var(--surface); border: 0.5px solid var(--border); padding: 12px 14px; position: relative; text-align: center; }
+  .funnel-stage:first-child { border-radius: var(--radius) 0 0 var(--radius); }
+  .funnel-stage:last-child  { border-radius: 0 var(--radius) var(--radius) 0; }
+  .funnel-stage + .funnel-stage { border-left: none; }
+  .funnel-stage.active-stage { background: var(--blue-light); border-color: var(--blue-mid); }
+  .funnel-arrow { display: flex; align-items: center; color: var(--text3); font-size: 16px; padding: 0 2px; align-self: center; flex-shrink: 0; }
+  .funnel-count { font-size: 22px; font-weight: 700; line-height: 1; }
+  .funnel-label { font-size: 10px; color: var(--text3); text-transform: uppercase; letter-spacing: 0.05em; margin-top: 3px; }
+  .funnel-sub   { font-size: 10px; color: var(--text3); margin-top: 2px; }
 
   /* Insights */
   .insights { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-bottom: 1rem; }
@@ -221,6 +236,10 @@
     <div style="margin-bottom:6px;" class="section-label">Overview</div>
     <div class="metrics" id="metrics-row"></div>
 
+    <!-- Pipeline funnel -->
+    <div style="margin-bottom:6px;" class="section-label">Hiring pipeline</div>
+    <div id="pipeline-funnel" class="pipeline-funnel"></div>
+
     <!-- Charts row 1 -->
     <div class="grid-2" style="margin-bottom:1rem;">
       <div class="card">
@@ -315,6 +334,62 @@ let allData = [];
 let charts = {};
 const COLORS = ['#378ADD','#1D9E75','#73726c','#D4537E','#BA7517','#7F77DD','#D85A30','#5DCAA5','#F09595','#EF9F27'];
 
+// ─── CANONICAL PIPELINE DEFINITION ───────────────────────────────────────────
+// Single source of truth for all status logic. Add new statuses here only.
+const PIPELINE = {
+  active:      ['Applied', 'Under Review'],      // Submitted, awaiting any response
+  phoneScreen: ['Called', 'Phone Screen'],        // Initial/recruiter screen calls
+  interview:   ['For Interview 1', 'For Interview 2', 'For Interview 3', 'For Final Interview'],
+  offer:       ['Offer'],                         // Offer extended, not yet accepted
+  accepted:    ['Accepted'],                      // Offer accepted
+  rejected:    ['Rejected'],
+  withdrawn:   ['Withdrawn'],
+  notApplied:  ['Not Applied']
+};
+
+const STATUS_COLOR = {
+  'Applied':            '#378ADD',
+  'Under Review':       '#16A085',
+  'Called':             '#7F77DD',
+  'Phone Screen':       '#9B59B6',
+  'For Interview 1':    '#639922',
+  'For Interview 2':    '#3B6D11',
+  'For Interview 3':    '#085041',
+  'For Final Interview':'#04342C',
+  'Offer':              '#D97706',
+  'Accepted':           '#1D9E75',
+  'Rejected':           '#E24B4A',
+  'Withdrawn':          '#BA7517',
+  'Not Applied':        '#BDC3C7'
+};
+
+const STATUS_ORDER = [
+  'Applied','Under Review','Called','Phone Screen',
+  'For Interview 1','For Interview 2','For Interview 3','For Final Interview',
+  'Offer','Accepted','Withdrawn','Rejected','Not Applied'
+];
+
+const STATUS_PILL = {
+  'Applied':            'pill-applied',
+  'Under Review':       'pill-underreview',
+  'Called':             'pill-called',
+  'Phone Screen':       'pill-phonescreen',
+  'For Interview 1':    'pill-interview',
+  'For Interview 2':    'pill-interview',
+  'For Interview 3':    'pill-interview',
+  'For Final Interview':'pill-interview',
+  'Offer':              'pill-offer',
+  'Accepted':           'pill-accepted',
+  'Rejected':           'pill-rejected',
+  'Withdrawn':          'pill-withdrawn',
+  'Not Applied':        'pill-applied'
+};
+
+function countStages(byStatus, stageList) {
+  return stageList.reduce((sum, s) => sum + (byStatus[s] || 0), 0);
+}
+// ─────────────────────────────────────────────────────────────────────────────
+
 function resetDashboard() {
   document.getElementById('upload-screen').style.display = 'flex';
   document.getElementById('dashboard').style.display = 'none';
@@ -371,22 +446,64 @@ async function buildDashboard() {
   const total = data.length;
   const byStatus = {};
   data.forEach(r => { const s = v(r,'Status') || 'Unknown'; byStatus[s] = (byStatus[s]||0)+1; });
-  const PHONE_SCREEN_STATUSES = ['Called','Phone Screen'];
-  const INTERVIEW_STATUSES = ['For Interview 1','For Interview 2','For Interview 3','For Final Interview'];
-  const active = data.filter(r => v(r,'Status') === 'Applied').length;
-  const rejected = byStatus['Rejected'] || 0;
-  const phoneScreens = PHONE_SCREEN_STATUSES.reduce((sum, s) => sum + (byStatus[s]||0), 0);
-  const interviews = INTERVIEW_STATUSES.reduce((sum, s) => sum + (byStatus[s]||0), 0);
-  const accepted = byStatus['Accepted'] || 0;
-  const rejRate = total > 0 ? Math.round((rejected/total)*100) : 0;
 
+  // Stage counts derived from single PIPELINE source
+  const nActive      = countStages(byStatus, PIPELINE.active);
+  const nPhoneScreen = countStages(byStatus, PIPELINE.phoneScreen);
+  const nInterview   = countStages(byStatus, PIPELINE.interview);
+  const nOffer       = countStages(byStatus, PIPELINE.offer);
+  const nAccepted    = countStages(byStatus, PIPELINE.accepted);
+  const nRejected    = countStages(byStatus, PIPELINE.rejected);
+  const rejRate      = total > 0 ? Math.round((nRejected / total) * 100) : 0;
+
+  // Stage breakdown for interview label
+  const interviewDetail = PIPELINE.interview.map(s => byStatus[s] ? `${s}: ${byStatus[s]}` : null).filter(Boolean).join(', ');
+
+  // ── Metrics row ──────────────────────────────────────────────────────────
   document.getElementById('metrics-row').innerHTML = `
-    <div class="metric"><div class="metric-label">Total applied</div><div class="metric-value">${total}</div><div class="metric-sub">All applications</div></div>
-    <div class="metric blue"><div class="metric-label">Still active</div><div class="metric-value">${active}</div><div class="metric-sub">Awaiting response</div></div>
-    <div class="metric red"><div class="metric-label">Rejected</div><div class="metric-value">${rejected}</div><div class="metric-sub">${rejRate}% rejection rate</div></div>
-    <div class="metric amber"><div class="metric-label">Phone Screens</div><div class="metric-value">${phoneScreens}</div><div class="metric-sub">${interviews} interview(s) in pipeline</div></div>
-    <div class="metric green"><div class="metric-label">Offers</div><div class="metric-value">${accepted}</div><div class="metric-sub">Accepted</div></div>
+    <div class="metric">
+      <div class="metric-label">Total applied</div>
+      <div class="metric-value">${total}</div>
+      <div class="metric-sub">All applications</div>
+    </div>
+    <div class="metric blue">
+      <div class="metric-label">Still active</div>
+      <div class="metric-value">${nActive}</div>
+      <div class="metric-sub">Applied + under review</div>
+    </div>
+    <div class="metric red">
+      <div class="metric-label">Rejected</div>
+      <div class="metric-value">${nRejected}</div>
+      <div class="metric-sub">${rejRate}% rejection rate</div>
+    </div>
+    <div class="metric amber">
+      <div class="metric-label">In pipeline</div>
+      <div class="metric-value">${nPhoneScreen + nInterview + nOffer}</div>
+      <div class="metric-sub">${nPhoneScreen} screen · ${nInterview} interview · ${nOffer} offer</div>
+    </div>
+    <div class="metric green">
+      <div class="metric-label">Accepted</div>
+      <div class="metric-value">${nAccepted}</div>
+      <div class="metric-sub">${nOffer > 0 ? nOffer + ' offer(s) pending' : 'No offers yet'}</div>
+    </div>
   `;
+
+  // ── Pipeline funnel ──────────────────────────────────────────────────────
+  const funnelStages = [
+    { label: 'Applied',       count: countStages(byStatus, PIPELINE.active),      sub: 'awaiting response',  color: '#378ADD' },
+    { label: 'Phone Screen',  count: nPhoneScreen,                                sub: 'recruiter contacts',  color: '#9B59B6' },
+    { label: 'Interview',     count: nInterview,                                  sub: interviewDetail || '—', color: '#3B6D11' },
+    { label: 'Offer',         count: nOffer,                                      sub: 'extended',            color: '#D97706' },
+    { label: 'Accepted',      count: nAccepted,                                   sub: 'accepted',            color: '#1D9E75' },
+  ];
+  document.getElementById('pipeline-funnel').innerHTML = funnelStages.map((stage, i) => `
+    ${i > 0 ? '<div class="funnel-arrow">›</div>' : ''}
+    <div class="funnel-stage ${stage.count > 0 ? 'active-stage' : ''}">
+      <div class="funnel-count" style="color:${stage.color}">${stage.count}</div>
+      <div class="funnel-label">${stage.label}</div>
+      <div class="funnel-sub">${stage.sub}</div>
+    </div>
+  `).join('');
 
   buildRoleChart(data);
   buildCountryChart(data);
@@ -394,7 +511,7 @@ async function buildDashboard() {
   buildVelocityChart(data);
   buildRoleRejectionBars(data);
   buildStatusChart(data, byStatus);
-  await buildInsights(data, total, rejected, rejRate, active, phoneScreens, interviews);
+  await buildInsights(data, total, nRejected, rejRate, nActive, nPhoneScreen, nInterview, nOffer, nAccepted, byStatus);
   populateFilters(data);
   renderTable();
 }
@@ -505,12 +622,9 @@ function buildVelocityChart(data) {
 }
 
 function buildStatusChart(data, byStatus) {
-  const statusColorMap = { 'Applied':'#378ADD','Called':'#7F77DD','Phone Screen':'#9B59B6','Under Review':'#16A085','For Interview 1':'#639922','For Interview 2':'#3B6D11','For Interview 3':'#085041','For Final Interview':'#04342C','Accepted':'#1D9E75','Withdrawn':'#BA7517','Rejected':'#E24B4A','Not Applied':'#BDC3C7' };
   const allStatuses = Object.keys(byStatus).filter(s => byStatus[s] > 0);
-  // Sort: Applied first, Rejected last, rest in between
-  const order = ['Applied','Called','Phone Screen','Under Review','For Interview 1','For Interview 2','For Interview 3','For Final Interview','Accepted','Withdrawn','Rejected','Not Applied'];
   const sorted = [...allStatuses].sort((a,b) => {
-    const ai = order.indexOf(a); const bi = order.indexOf(b);
+    const ai = STATUS_ORDER.indexOf(a); const bi = STATUS_ORDER.indexOf(b);
     return (ai === -1 ? 99 : ai) - (bi === -1 ? 99 : bi);
   });
   if (charts.status) charts.status.destroy();
@@ -518,7 +632,7 @@ function buildStatusChart(data, byStatus) {
     type: 'doughnut',
     data: {
       labels: sorted,
-      datasets: [{ data: sorted.map(s=>byStatus[s]), backgroundColor: sorted.map(s=>statusColorMap[s]||'#aaa'), borderWidth: 2, borderColor: '#fff' }]
+      datasets: [{ data: sorted.map(s=>byStatus[s]), backgroundColor: sorted.map(s=>STATUS_COLOR[s]||'#aaa'), borderWidth: 2, borderColor: '#fff' }]
     },
     options: {
       responsive: true, maintainAspectRatio: false,
@@ -529,7 +643,10 @@ function buildStatusChart(data, byStatus) {
   });
 }
 
-function computeInsightData(data, total, rejected, rejRate, active, phoneScreens, interviews) {
+function computeInsightData(data, total, nRejected, rejRate, nActive, nPhoneScreen, nInterview, nOffer, nAccepted, byStatus) {
+  // Statuses that count as "in pipeline" for conversion tracking
+  const screenOrInterview = [...PIPELINE.phoneScreen, ...PIPELINE.interview];
+
   // Country breakdown
   const countryRej = {};
   data.forEach(r => {
@@ -537,8 +654,8 @@ function computeInsightData(data, total, rejected, rejRate, active, phoneScreens
     if (!countryRej[c]) countryRej[c] = { total:0, rejected:0, interviews:0, accepted:0 };
     countryRej[c].total++;
     if (v(r,'Status')==='Rejected') countryRej[c].rejected++;
-    if (['Called','Phone Screen','For Interview 1','For Interview 2','For Interview 3','For Final Interview'].includes(v(r,'Status'))) countryRej[c].interviews++;
-    if (v(r,'Status')==='Accepted') countryRej[c].accepted++;
+    if (screenOrInterview.includes(v(r,'Status'))) countryRej[c].interviews++;
+    if (PIPELINE.accepted.includes(v(r,'Status'))) countryRej[c].accepted++;
   });
 
   // Role breakdown
@@ -548,8 +665,8 @@ function computeInsightData(data, total, rejected, rejRate, active, phoneScreens
     if (!roleRej[c]) roleRej[c] = { total:0, rejected:0, interviews:0, accepted:0 };
     roleRej[c].total++;
     if (v(r,'Status')==='Rejected') roleRej[c].rejected++;
-    if (['Called','Phone Screen','For Interview 1','For Interview 2','For Interview 3','For Final Interview'].includes(v(r,'Status'))) roleRej[c].interviews++;
-    if (v(r,'Status')==='Accepted') roleRej[c].accepted++;
+    if (screenOrInterview.includes(v(r,'Status'))) roleRej[c].interviews++;
+    if (PIPELINE.accepted.includes(v(r,'Status'))) roleRej[c].accepted++;
   });
 
   // Work type breakdown
@@ -559,7 +676,7 @@ function computeInsightData(data, total, rejected, rejRate, active, phoneScreens
     if (!workTypeCount[wt]) workTypeCount[wt] = { total:0, rejected:0, interviews:0 };
     workTypeCount[wt].total++;
     if (v(r,'Status')==='Rejected') workTypeCount[wt].rejected++;
-    if (['Called','Phone Screen','For Interview 1','For Interview 2','For Interview 3','For Final Interview'].includes(v(r,'Status'))) workTypeCount[wt].interviews++;
+    if (screenOrInterview.includes(v(r,'Status'))) workTypeCount[wt].interviews++;
   });
 
   // Application velocity (last 14 days vs prior)
@@ -579,17 +696,10 @@ function computeInsightData(data, total, rejected, rejRate, active, phoneScreens
   const consultingFirms = companies.filter(c=>['BCG','KPMG','EY','McKinsey','Deloitte','Accenture','PwC','Bain'].some(f=>c.includes(f)));
   const remoteCount = data.filter(r=>v(r,'Work Type')==='Remote').length;
 
-  // Status distribution
-  const byStatus = {};
-  data.forEach(r => { const s = v(r,'Status')||'Unknown'; byStatus[s]=(byStatus[s]||0)+1; });
-  const withdrawn = byStatus['Withdrawn'] || 0;
-  const called = byStatus['Called'] || 0;
-  const phoneScreen = byStatus['Phone Screen'] || 0;
   const underReview = byStatus['Under Review'] || 0;
-  const accepted = byStatus['Accepted'] || 0;
 
   return {
-    total, rejected, rejRate, active, phoneScreens, interviews, accepted, withdrawn, called, phoneScreen, underReview,
+    total, nRejected, rejRate, nActive, nPhoneScreen, nInterview, nOffer, nAccepted, underReview,
     remoteCount, oldApps, last7, prev7,
     consultingFirms,
     countryBreakdown: Object.entries(countryRej).sort((a,b)=>b[1].total-a[1].total).map(([name, d])=>({
@@ -618,7 +728,7 @@ function computeInsightData(data, total, rejected, rejRate, active, phoneScreens
   };
 }
 
-async function buildInsights(data, total, rejected, rejRate, active, phoneScreens, interviews) {
+async function buildInsights(data, total, nRejected, rejRate, nActive, nPhoneScreen, nInterview, nOffer, nAccepted, byStatus) {
   const el = document.getElementById('insights-section');
 
   // Show loading state
@@ -627,11 +737,11 @@ async function buildInsights(data, total, rejected, rejRate, active, phoneScreen
       <div class="ai-spinner"></div>
       <div>
         <div class="insight-title">Analyzing your job search data…</div>
-        <div class="insight-body">Claude is reading your current numbers and generating personalized strategic insights.</div>
+        <div class="insight-body">Gemini is reading your current numbers and generating personalized strategic insights.</div>
       </div>
     </div>`;
 
-  const statsPayload = computeInsightData(data, total, rejected, rejRate, active, phoneScreens, interviews);
+  const statsPayload = computeInsightData(data, total, nRejected, rejRate, nActive, nPhoneScreen, nInterview, nOffer, nAccepted, byStatus);
 
   const systemPrompt = `You are a strategic job search advisor with deep knowledge of the 2024–2025 global job market, including remote work trends, ATS systems, hiring cycles, recruiter behavior, international hiring barriers, and role-specific competition. You are analyzing a job seeker's real application data.
 
@@ -650,9 +760,10 @@ Return ONLY a valid JSON array. No markdown, no preamble, no explanation. Format
 ]`;
 
   const s = statsPayload;
-  const topCountries = s.countryBreakdown.slice(0,5).map(c=>c.name+': '+c.total+' apps, '+c.rejRate+'% rejected, '+c.interviews+' phone screens/interviews').join('; ');
-  const topRoles = s.roleBreakdown.slice(0,5).map(r=>r.name+': '+r.total+' apps, '+r.rejRate+'% rejected').join('; ');
-  const userPrompt = 'Stats: Total='+s.total+', Rejected='+s.rejected+' ('+s.rejRate+'%), Active='+s.active+', PhoneScreens='+s.phoneScreens+' (of which '+s.phoneScreen+' advanced to recruiter/HM screen), Interviews='+s.interviews+' (formal HM interviews, currently 0), UnderReview='+s.underReview+', Stale='+s.oldApps+', Remote='+s.remoteCount+'. IMPORTANT: PhoneScreens are initial/recruiter calls only — there are NO formal interviews yet. Countries: '+topCountries+'. Roles: '+topRoles+'. Generate exactly 4 insights as a JSON array.';
+  const topCountries = s.countryBreakdown.slice(0,5).map(c=>c.name+': '+c.total+' apps, '+c.rejRate+'% rejected, '+c.interviews+' screens/interviews').join('; ');
+  const topRoles = s.roleBreakdown.slice(0,5).map(r=>r.name+': '+r.total+' apps, '+r.rejRate+'% rejected, '+r.interviews+' screens/interviews').join('; ');
+  const stageBreakdown = 'Applied/UnderReview='+s.nActive+', PhoneScreen='+s.nPhoneScreen+', Interviews='+s.nInterview+', Offers='+s.nOffer+', Accepted='+s.nAccepted;
+  const userPrompt = 'Stats: Total='+s.total+', Rejected='+s.nRejected+' ('+s.rejRate+'%), '+stageBreakdown+', UnderReview='+s.underReview+', Stale='+s.oldApps+', Remote='+s.remoteCount+'. Countries: '+topCountries+'. Roles: '+topRoles+'. Generate exactly 4 insights as a JSON array.';
 
   try {
     const apiKey = window.AI_API_KEY;
@@ -702,15 +813,14 @@ Return ONLY a valid JSON array. No markdown, no preamble, no explanation. Format
 
 function buildFallbackInsights(s) {
   const items = [];
-  const phoneScreenRate = s.total > 0 ? Math.round((s.phoneScreens / s.total) * 100) : 0;
   const bestCountry = s.countryBreakdown.filter(c=>c.total>=3).sort((a,b)=>a.rejRate-b.rejRate)[0];
   const worstCountry = s.countryBreakdown.filter(c=>c.total>=3).sort((a,b)=>b.rejRate-a.rejRate)[0];
   const bestRole = s.roleBreakdown.filter(r=>r.total>=2).sort((a,b)=>a.rejRate-b.rejRate)[0];
 
-  if (s.phoneScreens === 0 && s.total >= 5)
+  if (s.nPhoneScreen === 0 && s.nInterview === 0 && s.total >= 5)
     items.push({ type:'warn', title:'0% phone screen conversion — materials need attention', body:`${s.total} applications sent with no recruiter calls (${s.rejRate}% rejection rate). This typically signals a resume/ATS mismatch or poor role-fit targeting. Prioritize tailoring your next 10 applications with role-specific keywords.` });
-  else if (s.phoneScreens > 0 && s.interviews === 0)
-    items.push({ type:'info', title:`${s.phoneScreens} phone screen(s) — no formal interviews yet`, body:`You have ${s.phoneScreens} recruiter/phone screen(s) in progress. Focus on converting these to hiring manager interviews. No formal interviews have been scheduled yet.` });
+  else if ((s.nPhoneScreen + s.nInterview) > 0 && s.nInterview === 0)
+    items.push({ type:'info', title:`${s.nPhoneScreen} phone screen(s) — no formal interviews yet`, body:`You have ${s.nPhoneScreen} recruiter/phone screen(s) active. Focus on converting these to hiring manager interviews. ${s.nOffer > 0 ? s.nOffer+' offer(s) extended.' : 'No formal interviews scheduled yet.'}` });
 
   if (worstCountry && worstCountry.rejRate >= 40)
     items.push({ type:'danger', title:`${worstCountry.name}: ${worstCountry.rejRate}% rejection rate`, body:`${worstCountry.name} is your worst-performing market with ${worstCountry.rejected}/${worstCountry.total} rejections. Consider whether visa/sponsorship barriers apply here. Redirect effort unless roles explicitly offer remote or sponsorship.` });
@@ -759,11 +869,10 @@ function renderTable() {
     if (search && !v(r,'Company').toLowerCase().includes(search) && !v(r,'Job Title').toLowerCase().includes(search)) return false;
     return true;
   });
-  const statusClass = { 'Applied':'pill-applied','Rejected':'pill-rejected','Withdrawn':'pill-withdrawn','Called':'pill-called','Phone Screen':'pill-interview','Under Review':'pill-called','For Interview 1':'pill-interview','For Interview 2':'pill-interview','For Interview 3':'pill-interview','For Final Interview':'pill-interview','Accepted':'pill-accepted' };
   const tbody = document.getElementById('table-body');
   tbody.innerHTML = filtered.map((r,i) => {
     const status = v(r,'Status') || 'Unknown';
-    const cls = statusClass[status] || '';
+    const cls = STATUS_PILL[status] || 'pill-applied';
     const days = daysAgo(r);
     return `<tr>
       <td style="color:var(--text3);font-weight:400;">${i+1}</td>
